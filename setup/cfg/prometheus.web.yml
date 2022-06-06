@@ -1,0 +1,11 @@
+---
+tls_server_config:
+  {{prometheus_tls_server_config and prometheus_tls_server_config|to_nice_yaml|indent(2) or ''}}
+  {{prometheus_tls_server_config_raw|indent(2)}}
+http_server_config:
+  {{prometheus_http_server_config and prometheus_http_server_config|to_nice_yaml|indent(2) or ''}}
+  {{prometheus_http_server_config_raw|indent(2)}}
+basic_auth_users:
+  {{prometheus_basic_auth_users_config and prometheus_basic_auth_users_config|to_nice_yaml|indent(2) or ''}}
+  {{prometheus_basic_auth_users_config_raw|indent(2)}}
+{{prometheus_web_config_raw_config}}

@@ -1,0 +1,14 @@
+- include_role: {name: corpusops.roles/docker_composev2_service}
+  vars:
+    _docker_compose_service:
+      project: "{{prometheus_compose_project}}"
+      state: "{{prometheus_started_state}}"
+      working_directory: "{{prometheus_hostdir}}"
+      stdout: "{{prometheus_stdout}}"
+      stderr: "{{prometheus_stderr}}"
+      restart: "{{prometheus_restart}}"
+      timeout: "{{prometheus_timeout}}"
+- service:
+    state: restarted
+    name: "{{prometheus_compose_project}}"
+  tags: [prometheus_restart_services]

@@ -1,0 +1,223 @@
+---
+prometheus_version: 2.38.0
+prometheus_listen_if: 0.0.0.0
+prometheus_listen_port: 9090
+prometheus_http_port: 80
+prometheus_https_port: 443
+prometheus_helpers_image: "corpusops/ubuntu-bare:22.04"
+prometheus_blackbox_image: "prom/blackbox-exporter:master"
+prometheus_nginx_image: "corpusops/project:nginx-stable"
+prometheus_lb: true
+prometheus_extra_hosts: {}
+prometheus_admin_password: secret56aze5r65
+prometheus_blackbox: true
+prometheus_grafana: true
+prometheus_cert_key: "{{prometheus_data_volume}}/key.pem"
+prometheus_cert: "{{prometheus_data_volume}}/cert.pem"
+prometheus_basedir: /srv/docker/prometheus
+prometheus_data_volume: "{{prometheus_basedir}}/data"
+prometheus_hostdir: "{{prometheus_basedir}}/current"
+prometheus_versioned_hostdir: "{{prometheus_basedir}}/{{prometheus_cfg_version}}"
+prometheus_volumes: ["{{prometheus_hostdir}}"]
+prometheus_cfg_version: "{{prometheus_version.split('.')[0]}}"
+prometheus_vversion: "v{{prometheus_version}}"
+prometheus_image: "prom/prometheus:{{prometheus_vversion}}"
+prometheus_network: 172.34.0
+prometheus_password: xxxtR7487913189781az
+prometheus_compose_project: "{{prometheus_basedir|copsf_basename}}"
+prometheus_listen_int_if: 127.0.0.1
+prometheus_compose_files: [docker-compose.yml]
+prometheus_docker_dot_env: "{{prometheus_docker_dot_env_default}}"
+prometheus_ext_url: "/prometheus/"
+prometheus_grafana_image: "grafana/grafana-enterprise:latest"
+prometheus_grafana_user: admin
+prometheus_grafana_password: secret48674azer568
+prometheus_tz: "Europe/Paris"
+prometheus_grafana_log_mode: console
+prometheus_grafana_log_level: info
+prometheus_ldap_server: ""
+prometheus_ldap_base: ""
+prometheus_ldap_bases: "{{prometheus_ldap_base and [prometheus_ldap_base] or []}}"
+prometheus_ldap_mail_attribute: email
+prometheus_grafana_main_ldap_config: |-
+prometheus_grafana_main_config: "{{prometheus_grafana_main_config_default}}"
+prometheus_grafana_main_config_default: |-
+  [log]
+  level = {{prometheus_grafana_log_level}}
+  mode = {{prometheus_grafana_log_mode}}
+  filters = ""
+  #filters = "ldap:debug"
+  {% if prometheus_ldap_server %}
+  [auth.ldap]
+  enabled = true
+  config_file = /etc/grafana/ldap.toml
+  allow_sign_up = true
+  skip_org_role_sync = false
+  {% endif %}
+prometheus_grafana_ldap_config: "{{prometheus_grafana_ldap_config_default}}"
+prometheus_grafana_ldap_config_default: |-
+  {% if prometheus_ldap_server %}
+  [[servers]]
+  bind_dn = "{{prometheus_ldap_bind_dn}}"
+  bind_password = '{{prometheus_ldap_bind_password}}'
+  host = "{{prometheus_ldap_server}}"
+  port = 389
+  use_ssl = false
+  start_tls = true
+  tls_ciphers = []
+  min_tls_version = ""
+  ssl_skip_verify = false
+  timeout = 10
+  search_filter = "(|(cn=%s)(uid=%s)(shortMail=%s)(gosaMailAlternateAddress=%s))"
+  search_base_dns = {{ prometheus_ldap_bases|to_json }}
+  [servers.attributes]
+  name = "givenName"
+  surname = "sn"
+  username = "cn"
+  member_of = "memberOf"
+  email =  "{{prometheus_ldap_mail_attribute}}"
+  [[servers.group_mappings]]
+  group_dn = "{{prometheus_ldap_admin_group}}"
+  org_role = "Admin"
+  grafana_admin = true
+  [[servers.group_mappings]]
+  group_dn = "*"
+  org_role = "Viewer"
+  {% endif %}
+prometheus_ldap_groups_dn: "ou=group,{{prometheus_ldap_base}}"
+prometheus_ldap_admin_group: "cn=Admins,{{prometheus_ldap_groups_dn}}"
+prometheus_docker_dot_env_common_default: |-
+  TZ={{prometheus_tz}}
+  HELPERS_IMAGE={{prometheus_helpers_image}}
+  PROMETHEUS_HAS_GRAFANA={{prometheus_grafana and 'y' or ''}}
+  NGINX_IMAGE={{prometheus_nginx_image}}
+  GRAFANA_IMAGE={{prometheus_grafana_image}}
+  DOCKER_BUILDKIT=1
+  COMPOSE_DOCKER_CLI_BUILD=1
+  BUILDKIT_PROGRESS=plain
+  BUILDKIT_INLINE_CACHE=1
+  PROMETHEUS_EXT_URL={{prometheus_ext_url}}
+  DATA_HOST_FOLDER={{prometheus_data_volume}}
+  DATA_FOLDER=/data
+  {% if prometheus_grafana %}
+  GF_SECURITY_ADMIN_PASSWORD={{prometheus_grafana_password}}
+  GF_SECURITY_ADMIN_USER={{prometheus_grafana_user}}
+  {% endif %}
+  PROMETHEUS_BLACKBOX_IMAGE={{prometheus_blackbox_image}}
+  PROMETHEUS_IMAGE={{prometheus_image}}
+  PROMETHEUS_NETWORK={{prometheus_network}}
+  PROMETHEUS_VERSION={{prometheus_version}}
+  PROMETHEUS_LISTEN_PORT={{prometheus_listen_port}}
+  PROMETHEUS_HTTP_PORT={{prometheus_http_port}}
+  PROMETHEUS_HTTPS_PORT={{prometheus_https_port}}
+  PROMETHEUS_LISTEN_INT_ADDR={{prometheus_listen_int_if}}
+  PROMETHEUS_LISTEN_ADDR={{prometheus_listen_if}}
+  PROMETHEUS_HTTP_ADDR={{prometheus_listen_if}}
+  PROMETHEUS_HTTPS_ADDR={{prometheus_listen_if}}
+  PROMETHEUS_RESTART_POLICY={{prometheus_restart_policy}}
+  PROMETHEUS_LOGLEVEL={{prometheus_loglevel}}
+  PROMETHEUS_TSDB_MAX_RETENTION={{prometheus_retention}}
+  PROMETHEUS_TSDB_MIN_BLOCK_DURATION={{prometheus_block_duration}}
+  PROMETHEUS_TSDB_MAX_BLOCK_DURATION={{prometheus_block_duration}}
+  PROMETHEUS_TSDB_MAX_SIZE={{prometheus_max_size}}
+prometheus_block_duration: 2h
+prometheus_retention: "52w"
+prometheus_loglevel: info
+prometheus_max_size: 50GB
+prometheus_docker_dot_env_default: |-
+  # ansible managed
+  {{prometheus_docker_dot_env_common_default}}
+  #
+  COMPOSE_PROJECT_NAME={{prometheus_compose_project}}
+  CONTROL_COMPOSE_FILES={{prometheus_compose_files|join(' ')}}
+  COMPOSE_FILE={{prometheus_compose_files|join(':')}}
+  PROMETHEUS_SYSLOG_PORT={{prometheus_syslog_port}}
+prometheus_syslog_port: "10514"
+prometheus_basic_auth_users: "{{prometheus_basic_auth_users_default}}"
+prometheus_basic_auth_users_default:
+  admin: "{{prometheus_admin_password}}"
+prometheus_tls_server_config: {}
+prometheus_tls_server_config_raw: ""
+prometheus_http_server_config_raw: ""
+prometheus_basic_auth_users_config_raw: ""
+prometheus_web_config_raw_config: ""
+prometheus_http_server_config: {}
+prometheus_basic_auth_users_config: |-
+  {%- set r = {} %}
+  {%- for i,v in prometheus_basic_auth_users.items() %}
+  {%-  set _ = r.update({i: v|password_hash('bcrypt')}) %}
+  {%- endfor %}
+  {{- r|to_json }}
+prometheus_global_config_raw_raw: ""
+prometheus_scrape_configs_raw: ""
+prometheus_raw_config: ""
+prometheus_admin_user: admin
+prometheus_restart_policy: unless-stopped
+prometheus_dcompose: docker compose
+prometheus_stopped_state: stopped
+prometheus_started_state: started
+prometheus_stdout: "null"
+prometheus_stderr: "null"
+prometheus_restart: "always"
+prometheus_timeout: "11"
+# extra opts
+prometheus_global_config: "{{prometheus_global_config_default}}"
+prometheus_global_config_default:
+  scrape_interval: 2m
+  scrape_timeout: 10s
+  evaluation_interval: 2m
+  external_labels:
+    source: "{{inventory_hostname}}"
+prometheus_scrape_configs: "{{prometheus_scrape_configs_default}}"
+prometheus_scrape_configs_default:
+- job_name: prometheus
+  static_configs: [{targets: ['localhost:9090']}]
+- job_name: blackbox
+  scrape_interval: 5s
+  metrics_path: /probe
+  params: {module: [icmp-ipv4]}
+  file_sd_configs:
+  - files:
+    - "/etc/prometheus/targets/all/*.yml"
+    - "/etc/prometheus/targets/blackbox.yml"
+  relabel_configs:
+  - {source_labels: [__address__],    target_label: __param_target}
+  - {source_labels: [__param_target], target_label: instance}
+  - {target_label: __address__,       replacement: blackbox-exporter:9115}
+- job_name: blackbox-https-2xx
+  scrape_interval: 30s
+  metrics_path: /probe
+  params: {module: [https-2xx]}
+  file_sd_configs:
+  - files: ["/etc/prometheus/targets/blackbox-https-2xx/*.yml"]
+  relabel_configs:
+  - {source_labels: [__address__],
+     target_label: __param_target       }
+  - {source_labels: [__param_target],
+     target_label: instance             }
+  - {target_label:  __address__,
+     replacement: blackbox-exporter:9115}
+prometheus_blackbox_config: "{{prometheus_blackbox_config_default}}"
+prometheus_blackbox_config_default:
+  modules:
+    icmp-ipv4:
+      prober: icmp
+      icmp: {preferred_ip_protocol: ip4}
+    icmp-ipv6:
+      prober: icmp
+      icmp:
+        preferred_ip_protocol: ip6
+        ip_protocol_fallback: false
+    https-2xx:
+      prober: http
+      timeout: 5s
+      http:
+        valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+        valid_status_codes: [200]
+        method: GET
+        no_follow_redirects: false
+        fail_if_ssl: false
+        fail_if_not_ssl: true
+        preferred_ip_protocol: "ip6"
+        ip_protocol_fallback: true
+prometheus_blackbox_raw_config: ""

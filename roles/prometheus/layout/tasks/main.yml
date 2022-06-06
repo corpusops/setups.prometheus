@@ -1,0 +1,22 @@
+- set_fact:
+    prometheus_host_dirs: |
+        {% set directories = [] %}
+        {% for prometheus_volume in prometheus_volumes %}
+        {% set d = prometheus_volume.split(':')[0] %}
+        {% set _ = directories.append(d) %}
+        {% endfor %}
+        {% set _ = directories.append(prometheus_data_volume) %}
+        {{ directories | to_json }}
+- file:
+    path: "{{item}}"
+    mode: "0711"
+    state: directory
+  with_items: "{{prometheus_host_dirs}}"
+- file:
+    state: directory
+    path: "{{prometheus_versioned_hostdir}}"
+- file:
+    state: link
+    force: true
+    src: "{{prometheus_versioned_hostdir}}"
+    path: "{{prometheus_hostdir}}"

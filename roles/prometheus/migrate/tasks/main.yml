@@ -1,0 +1,12 @@
+- template:
+    src: "setup/{{item}}"
+    dest: "{{prometheus_hostdir}}/{{item}}"
+    trim_blocks: false
+    mode: "0750"
+    force: true
+  loop: [wrap_migrate]
+
+- shell: "{{prometheus_hostdir}}/wrap_migrate"
+  register: migrate_run
+  failed_when:
+  - migrate_run.rc != 0 and ('.MigratioNotFound' not in migrate_run.stderr)

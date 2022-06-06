@@ -1,0 +1,4 @@
+---
+- hosts: "{{prometheus_servers|default('prometheus_servers')}}"
+  roles:
+  - {name: prometheus/setup, tags: [setup]}

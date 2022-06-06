@@ -1,0 +1,261 @@
+{{- $dciphers := "EECDH+AESGCM:EDH+AESGCM:ECDHE-RSA-AES129-GCM-SHA256:AES256+EECDH:DHE-RSA-AES128-GCM-SHA256:AES256+EDH:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA:ECDHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES256-GCM-SHA384:AES128-GCM-SHA256:AES256-SHA256:AES128-SHA256:AES256-SHA:AES128-SHA:DES-CBC3-SHA:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!MD5:!PSK:!RC4" }}
+{{- $v := dict "$" $ }}
+{{- $v := merge $v ( dict "Env"                           .Env) }}
+{{- $v := merge $v ( dict "certspath"                   ( .Env.SSL_CERTS_PATH | default "/certs" )                                     ) }}
+{{- $v := merge $v ( dict "cert"                        ( .Env.SSL_CERT_PATH | default ( print $v.certspath  "/cert.crt" ))            ) }}
+{{- $v := merge $v ( dict "key"                         ( .Env.SSL_KEY_PATH  | default ( print $v.certspath  "/cert.key" ))            ) }}
+{{- $v := merge $v ( dict "diffie"                      ( .Env.NGINX_DH_FILE | default ( print $v.certspath  "/dhparams.pem" ))        ) }}
+{{- $v := merge $v ( dict "nossl"                       ( .Env.NO_SSL | default "1" )                                                  ) }}
+{{- if not ( .Env.NO_FORCE_SSL | empty ) }}
+{{- $v := merge $v ( dict "noforcessl" .Env.NO_FORCE_SSL                                                                               ) }}
+{{- else }}
+{{- $v := merge $v ( dict "noforcessl" ((eq $v.nossl "1") | ternary "0" "1" )                                                           )}}
+{{- end }}
+{{- $v := merge $v ( dict "server_name"                 ( .Env.NGINX_SERVERNAME     | default "localhost") ) }}
+{{- $v := merge $v ( dict "server_name_in_redirect"     ( .Env.NGINX_SERVERNAME_IN_REDIRECT | default "on" )                           ) }}
+{{- $v := merge $v ( dict "server_aliases"              ( .Env.NGINX_SERVER_ALIASES | default ""         )                             ) }}
+{{- $v := merge $v ( dict "redirect_server_aliases"     ( .Env.NGINX_REDIRECT_SERVER_ALIASES | default "off" )                         ) }}
+{{- $v := merge $v ( dict "server_name_in_redirect_ssl" ( .Env.NGINX_SERVERNAME_IN_REDIRECT_SSL | default $v.server_name_in_redirect ) ) }}
+{{- $v := merge $v ( dict "real_ip_from_recursive"      ( .Env.NGINX_REAL_IP_FROM_RECURSIVE | default "on" )                           ) }}
+{{- $v := merge $v ( dict "real_ip_from"                ( .Env.NGINX_REAL_IP_FROM | default "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16" )) }}
+{{- $v := merge $v ( dict "real_ip_header"              ( .Env.NGINX_REAL_IP_HEADER | default "x-forwarded-for" )                      ) }}
+{{- $v := merge $v ( dict "ssl_ciphers"                 ( .Env.NGINX_SSL_CIPHERS | default $dciphers )                                 ) }}
+{{- $v := merge $v ( dict "ssl_protocols"               ( .Env.NGINX_SSL_PROTOCOLS | default "TLSv1 TLSv1.1 TLSv1.2" )                 ) }}
+{{- $v := merge $v ( dict "log_level"                   ( .Env.NGINX_LOGLEVEL | default "crit" )                                       ) }}
+{{- $v := merge $v ( dict "base_dir"                    ( .Env.BASE_DIR | default ( print "/app" ))                                    ) }}
+{{- $v := merge $v ( dict "data_dir"                    ( .Env.BASE_DIR | default ( print $v.base_dir "/data" ))                       ) }}
+{{- $v := merge $v ( dict "maintenance_flag"            ( .Env.NGINX_PLONE_MAINT_FLAG | default ( print $v.data_dir "/flags/MAINTENANCE" ) ) ) }}
+
+
+# optimize internal nginx buffers
+types_hash_max_size 2048;
+variables_hash_max_size 1024;
+variables_hash_bucket_size 256;
+server_names_hash_bucket_size 256;
+server_names_hash_max_size 1024;
+proxy_headers_hash_max_size  1024;
+proxy_headers_hash_bucket_size 128;
+proxy_redirect off;
+proxy_buffer_size 256k;
+proxy_buffers 4 256k;
+proxy_busy_buffers_size 256k;
+
+# logging setup
+log_format custom_combined '"$remote_addr" - $remote_user [$time_local] "$request" $status $bytes_sent "$http_referer" "$http_user_agent" "$gzip_ratio"';
+# Define type of requests going to logs (to remove OPTIONS requests for example)
+map $request_method $method_loggablem { OPTIONS 0;default 1;}
+map $uri            $method_loggableu { "~/ok/?$" 0;default 1;}
+map $method_loggablem$method_loggableu $method_loggable { "~0" 0;default 1;}
+
+# activate real_ip logging
+real_ip_header {{$v.real_ip_header}};
+real_ip_recursive {{ $v.real_ip_from_recursive }};
+{{ range $v.real_ip_from | splitList " " }}
+set_real_ip_from {{ . }};
+{{ end }}
+
+# SSL offload support (use_scheme is the proxified scheme)
+# if X-SSL/X-FORWADED-PROTO header is set, we are behind a ssl gateway
+# so the scheme is either from the request or
+# forced to ssl if we have the X-SSL header set to 1
+# break loop resolution loop while map resolution
+map "$http_x_ssl$http_x_forwarded_proto" $forwarded_ssl_scheme {default $scheme; "~(?:1|https)" https;}
+# if we come directly from https on localbox without x_ssl, set it.
+map $forwarded_ssl_scheme $http_x_ssl_resolved {default 0; https 1;}
+
+# boolean value of https/http: on == https again, we default to the request value
+# but also force it to true when we are forced
+# to be on ssl via X-SSL/X-FORWARDED-PROTO
+map $forwarded_ssl_scheme $fastcgi_ssl_toggle                 {default $https;https on;}
+map $http_x_ssl_resolved  $forwarded_remote_server_port       {default $remote_port;1 443;}
+map $http_x_ssl_resolved  $forwarded_static_server_port       {default 80;1 443;}
+map $http_x_ssl_resolved  $forwarded_server_port              {default $server_port;1 443;}
+map $http_x_ssl_resolved  $http_x_forwarded_protocol_resolved {default tcp;1 ssl;}
+map $http_x_ssl_resolved  $http_x_forwarded_ssl_resolved      {default off;1 on;}
+map $http_x_ssl_resolved  $http_x_forwarded_proto_resolved    {default http;1 https;}
+
+# Obtain best http host
+map $http_host $this_host {
+    "~(?<rthis_host>[^:]+)"       "$rthis_host";
+    ''               $host;
+}
+map $http_x_forwarded_host $best_http_host {
+    "~^(?<rbest_http_host>[^:]+):?"  "$rbest_http_host";
+    ''               $this_host;
+}
+map "$http_host:$forwarded_server_port" $pforwarded_server_port {
+    "~(?<rpforwarded_server_port>:[^:]+)(?::.*$)" "$rpforwarded_server_port";
+    default ":$forwarded_server_port";
+}
+
+{{ define "notimeout" }}
+# 10 days timeout
+proxy_connect_timeout   864000;
+proxy_send_timeout      864000;
+proxy_read_timeout      864000;
+send_timeout            864000;
+{{ end }}
+
+{{ define "proxcommon" }}
+        {{ template "notimeout" }}
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Host $http_host;
+        proxy_redirect off;
+        # Never cache the API content to prevent proxy caching
+        add_header Pragma "no-cache";
+        add_header Cache-Control "private, max-age=0, no-cache, no-store";
+{{ end }}
+upstream up_prometheus { server prometheus:9090; }
+upstream up_grafana { server grafana:3000; }
+server {
+    listen 80;
+
+    server_name {{ $v.server_name }}{{ if ne $v.redirect_server_aliases "on" }}{{if $v.server_aliases }} {{$v.server_aliases}}{{end}}{{end}};
+    server_name_in_redirect {{ $v.server_name_in_redirect }};
+
+    error_log  /dev/stdout {{$v.log_level}};
+    access_log /dev/stdout custom_combined if=$method_loggable;
+
+    {{ define "vhost" }}
+    {{ if .Env.PLONE__HTTP_PROTECT_PASSWORD }}
+    auth_basic            "Restricted";
+    auth_basic_user_file  /etc/htpasswd-protect;
+    {{ end }}
+    gzip on;
+    # adds a Vary: Accept-Encoding in the response, and it's a valid varying
+    # info as we may not gzip depending on the value of Accept-Encoding
+    gzip_vary on;
+    gzip_proxied any;
+    # note that text/html is always on by default
+    gzip_types
+        text/plain
+        text/css
+        text/xml
+        text/javascript
+        text/cache-manifest
+        application/json
+        application/x-javascript
+        application/xml
+        application/xml+rss
+        application/rss+xml
+        application/javascript
+        application/atom+xml
+        application/ld+json
+        application/manifest+json
+        application/vnd.geo+json
+        application/vnd.ms-fontobject
+        application/x-font-ttf
+        application/x-web-app-manifest+json
+        image/svg+xml
+        application/xhtml+xml
+        application/vnd.mapbox-vector-tile
+        font/opentype;
+    gzip_buffers 16 8k;
+    gzip_http_version 1.1;
+    gzip_min_length 256;
+    gzip_comp_level 4;
+    client_max_body_size 1000G;
+    # feed the map variables for ssl up
+    set $http_x_ssl                $http_x_ssl_resolved;
+    set $http_x_forwarded_proto    $http_x_forwarded_proto_resolved;
+    set $http_x_forwarded_ssl      $http_x_forwarded_ssl_resolved;
+    set $http_x_forwarded_protocol $http_x_forwarded_protocol_resolved;
+    # set $scheme                  $forwarded_ssl_scheme;
+    # proxy params headers
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-NginX-Proxy true;
+    proxy_set_header x-forwarded-proto $http_x_forwarded_proto_resolved;
+    proxy_set_header x-forwarded-ssl $http_x_forwarded_ssl_resolved;
+    proxy_set_header x-forwarded-protocol $http_x_forwarded_protocol_resolved;
+    proxy_buffering off;
+    proxy_http_version 1.1;
+
+    # Set custom 502 page when service is starting
+    error_page 502 /502.html;
+    location = /502.html {
+        root  /public/502.html;
+    }
+    {{ if eq .noforcessl "1"}}# {{ end }}if ($forwarded_ssl_scheme != "https"){ rewrite ^(.*)$ https://$host$1 permanent; }
+
+    # check maintenance marker on shared directory
+    if (-f {{.maintenance_flag}}) {
+        return 503;
+    }
+
+    location {{.Env.PROMETHEUS_EXT_URL}} {
+        {{ template "proxcommon" }}
+        proxy_pass http://up_prometheus;
+    }
+    {{ if "y" | eq ( .Env.PROMETHEUS_HAS_GRAFANA | default "" ) }}
+    location / {
+        {{ template "proxcommon" }}
+        proxy_pass http://up_grafana;
+    }
+    {{ end}}
+
+    {{ end }}
+    {{ template "vhost" $v }}
+
+}
+
+{{ if ne $v.nossl "1" }}
+
+server {
+    listen 443 ssl;
+    ssl on;
+    server_name_in_redirect {{ $v.server_name_in_redirect_ssl }};
+    server_name             {{ $v.server_name }}{{if $v.server_aliases }}{{$v.server_aliases}}{{end}};
+    ssl_ciphers             {{ $v.ssl_ciphers }};
+    ssl_protocols           {{ $v.ssl_protocols }};
+    ssl_certificate         {{ $v.cert }};
+    ssl_certificate_key     {{ $v.key }};
+    ssl_session_cache  shared:SSL:10m;
+    ssl_session_timeout 10m;
+    ssl_prefer_server_ciphers on;
+    ssl_dhparam {{ $v.diffie }};
+    error_log  /dev/stdout {{$v.log_level}};
+    access_log /dev/stdout custom_combined if=$method_loggable;
+    {{ template "vhost" $v }}
+}
+{{ end }}
+
+
+## SSL REDIRECT VHOSTS
+{{ define "rvhost" }}
+{{ if .Env.PLONE__HTTP_PROTECT_PASSWORD }}
+auth_basic            "Restricted";
+auth_basic_user_file  /etc/htpasswd-protect;
+{{ end }}
+rewrite ^(.*)$ http{{ if ne .noforcessl "1"}}s{{end}}://{{.server_name}}$1 redirect;
+{{ end }}
+{{ if $v.redirect_server_aliases | eq "on" }}{{if $v.server_aliases }}
+server {
+    listen 80;
+    server_name {{$v.server_aliases}};
+    server_name_in_redirect {{ $v.server_name_in_redirect }};
+    error_log  /dev/stdout {{$v.log_level}};
+    access_log /dev/stdout custom_combined if=$method_loggable;
+    {{ template "rvhost" $v }}
+}
+{{ if ne $v.nossl "1" }}
+server {
+    listen 443 ssl;
+    ssl on;
+    server_name_in_redirect {{ $v.server_name_in_redirect_ssl }};
+    server_name {{$v.server_aliases}};
+    ssl_ciphers             {{ $v.ssl_ciphers }};
+    ssl_protocols           {{ $v.ssl_protocols }};
+    ssl_certificate         {{ $v.cert }};
+    ssl_certificate_key     {{ $v.key }};
+    ssl_session_cache  shared:SSL:10m;
+    ssl_session_timeout 10m;
+    ssl_prefer_server_ciphers on;
+    ssl_dhparam {{ $v.diffie }};
+    error_log  /dev/stdout {{$v.log_level}};
+    access_log /dev/stdout custom_combined if=$method_loggable;
+    {{ template "rvhost" $v }}
+}
+{{ end }}
+{{ end }}{{ end }} 

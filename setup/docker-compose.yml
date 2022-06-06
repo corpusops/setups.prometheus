@@ -1,0 +1,119 @@
+---
+# ansible managed
+version: '3.9'
+x-blocks:
+  log: &log
+    depends_on: [log, setup]
+    logging: {driver: syslog, options: {tag: '{{'{{'}}index .ContainerLabels "com.docker.compose.service"}}', syslog-address: "tcp://${SYSLOG_ADDRESS:-127.0.0.1}:${SYSLOG_PORT:-10514}"}}
+  env: &env {env_file: [.env]}
+  restart: &restart {restart: "$PROMETHEUS_RESTART_POLICY"}
+  network: &network {networks: {prometheus: {}}}
+  reg_extra_hosts: &reg_extra_hosts
+    extra_hosts:
+      localhost2: 127.0.0.1
+  base: &base { <<: [ *log, *env, *restart, *reg_extra_hosts, *network ] }
+{%- for i, v in prometheus_extra_hosts.items() %}
+      {{i}}: "{{v}}"
+{%- endfor %}
+networks:
+  prometheus:
+    driver: bridge
+    name: "${PROMETHEUS_NETWORK_NAME:-prometheus}"
+    ipam: {driver: default, config: [{subnet: "${PROMETHEUS_NETWORK}.0/24"}]}
+services:
+  log:
+    <<: [ *base ]
+    depends_on: []
+    image: corpusops/rsyslog
+    networks: {prometheus: {ipv4_address: "${PROMETHEUS_NETWORK}.2"}}
+    ports:
+    - "${PROMETHEUS_LISTEN_ADDR:-127.0.0.1}:${PROMETHEUS_SYSLOG_PORT:-10514}:10514"
+    logging: {driver: "json-file", options: {max-size: "10M", max-file: "50"}}
+    volumes: [logs:/var/log/docker]
+  setup:
+    <<: [ *base ]
+    depends_on: [log]
+    image: "$HELPERS_IMAGE"
+    volumes: [helpers:/helpers]
+    entrypoint:
+    - bash
+    - "-ec"
+    - |-
+      export PATH=/cops_helpers:/$$PATH
+      hf=/st9rted_hr
+      flags=$$hf
+      rf() { for f in $$flags;do if [ -f $$f ] ;then rm -f $$f;fi;done; }
+      rf
+      echo "Refresh helpers" >&2 && \
+        cp -vf /usr/bin/diff /cops_helpers/* /helpers && touch $$hf
+      set -x
+      for f in $$flags;do dockerize -timeout 900s -wait "file:///$$f";done
+      set +x
+      rf
+      while true;do printf "HTTP/1.1 200 OK\nContent-Length: 7\n\nstarted\n"|( nc -l -p 80 || /bin/true);done
+  prometheus:
+    <<: [ *base ]
+    image: "$PROMETHEUS_IMAGE"
+    command:
+    - "--log.level=${PROMETHEUS_LOGLEVEL:-debug}"
+    - "--config.file=/etc/prometheus/cfg/prometheus.yml"
+    - "--web.config.file=/etc/prometheus/cfg/prometheus.web.yml"
+    - "--web.external-url=$PROMETHEUS_EXT_URL"
+    - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+    - "--web.console.templates=/usr/share/prometheus/consoles"
+    - "--web.enable-admin-api"
+    - "--web.enable-lifecycle"
+    - "--storage.tsdb.path=/prometheus"
+    - "--storage.tsdb.wal-compression"
+    - "--storage.tsdb.min-block-duration=${PROMETHEUS_TSDB_MIN_BLOCK_DURATION:-2h}"
+    - "--storage.tsdb.max-block-duration=${PROMETHEUS_TSDB_MAX_BLOCK_DURATION:-2h}"
+    - "--storage.tsdb.retention.time=${PROMETHEUS_TSDB_MAX_RETENTION:-7d}"
+    - "--storage.tsdb.retention.size=${PROMETHEUS_TSDB_MAX_SIZE:-3g}"
+    volumes:
+    - "./cfg:/etc/prometheus/cfg"
+    - "$DATA_HOST_FOLDER:$DATA_FOLDER"
+    - "$DATA_HOST_FOLDER/targets:/etc/prometheus/targets"
+    - "$DATA_HOST_FOLDER/rules:/etc/prometheus/rules"
+    - prometheus-data:/prometheus
+    ports:
+    - "${PROMETHEUS_LISTEN_INT_ADDR:-127.0.0.1}:${PROMETHEUS_LISTEN_PORT:-9090}:9090"
+{%- if prometheus_blackbox %}
+  blackbox-exporter:
+    <<: [ *base ]
+    image: "$PROMETHEUS_BLACKBOX_IMAGE"
+    command: ["--config.file=/etc/prometheus/blackbox.yml"]
+    volumes: ["./blackbox.yml:/etc/prometheus/blackbox.yml"]
+{%- endif %}
+{%- if prometheus_grafana %}
+  grafana:
+    <<: [ *base ]
+    depends_on: [log, prometheus]
+    image: $GRAFANA_IMAGE
+    ports:
+    - "${PROMETHEUS_LISTEN_INT_ADDR:-127.0.0.1}:${PROMETHEUS_GRAFANA_PORT:-3000}:3000"
+    volumes:
+    - grafana:/var/lib/grafana
+    - ./grafana:/etc/grafana
+    #- ./grafana/grafana.ini:/usr/share/grafana/conf/grafana.ini
+    #- ./grafana/ldap.toml:/usr/share/grafana/conf/ldap.toml
+    #- ./grafana/provisioning:/usr/share/grafana/conf/provisioning
+{%- endif %}
+{%- if prometheus_lb %}
+  lb:
+    <<: [ *base ]
+    depends_on: [log, prometheus]
+    image: $NGINX_IMAGE
+    ports:
+    - "${PROMETHEUS_HTTP_ADDR:-0.0.0.0}:${PROMETHEUS_HTTP_PORT:-80}:80"
+    - "${PROMETHEUS_HTTPS_ADDR:-0.0.0.0}:${PROMETHEUS_HTTPS_PORT:-443}:443"
+    volumes:
+    - certs:/certs
+    - ./nginx:/etc/nginx/conf.d
+{% endif %}
+volumes:
+  prometheus-data:
+  helpers:
+  logs:
+  certs:
+  grafana:
+# vim: set ft=sls:

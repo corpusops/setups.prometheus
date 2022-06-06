@@ -1,0 +1,5 @@
+---
+- include_role: {name: corpusops.roles/vars_registry}
+  vars: {cops_vars_registry_target: prometheus}
+  tags: [vars]
+# make some stuff to DRY templates

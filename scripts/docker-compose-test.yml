@@ -1,0 +1,12 @@
+version: "3.8"
+x-bases:
+  x-base: &base
+    environment:
+      TEST_MODE: "1"
+services:
+  prometheusscripts:
+    <<: [ *base ]
+  setup-prometheusscripts:
+    <<: [ *base ]
+volumes:
+  mails: {}

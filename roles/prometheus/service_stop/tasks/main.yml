@@ -1,0 +1,15 @@
+- include_role: {name: corpusops.roles/docker_composev2_service}
+  vars:
+    _docker_compose_service:
+      project: "{{prometheus_compose_project}}"
+      state: "{{prometheus_stopped_state}}"
+      working_directory: "{{prometheus_hostdir}}"
+      stdout: "{{prometheus_stdout}}"
+      stderr: "{{prometheus_stderr}}"
+  tags: [service_stop]
+- shell: |-
+    set -ex
+    if [ ! -e "{{prometheus_hostdir}}/{{prometheus_compose_files[0]}}" ];then exit 0;fi
+    cd {{prometheus_hostdir}}
+    docker compose down
+  tags: [service_dockercompose_stop]

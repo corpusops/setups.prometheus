@@ -1,0 +1,5 @@
+# to work, needs  https://github.com/goprometheus/prometheus/issues/15323 to be merged in
+# - shell: "{{prometheus_hostdir}}/flushall.sh"
+#   name: "fix redis queue"
+#   tags: [flush]
+- debug: {msg: "nothing for now"}

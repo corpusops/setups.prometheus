@@ -1,0 +1,27 @@
+---
+prometheus_lxcs: {children: {prometheus_2: {}}}
+prometheus_2:
+  hosts: {prometheus.foobar.net: {}}
+  vars:
+    prometheus_grafana_password: 789789azer
+    prometheus_basic_auth_users:
+      admin: "{{prometheus_admin_password}}"
+      foo: 123456
+    prometheus_admin_password: qsdf123
+    prometheus_scrape_configs:
+    - job_name: somejob
+      basic_auth: {username: "xxx", password: "yyy"}
+      scrape_interval: 5s
+      metrics_path: /prometheus/metrics
+      scheme: https
+      tls_config: {insecure_skip_verify: "{{prometheus_insecure_skip_verify|default(true)}}"}
+      params: {access_token: [zzz]}
+      static_configs: [{targets: ["aides-avantages-recette.irp-auto.com:443"]}]
+    prometheus_ldap_server: "ldap.foobar.net"
+    prometheus_ldap_base: "dc=foobar,dc=org"
+    prometheus_ldap_bind_dn: "uid=xxx,ou=People,dc=foobar,dc=org"
+    prometheus_ldap_bind_password: "yyy"
+    prometheus_ldap_mail_attribute: mail
+    prometheus_ldap_groups_dn: "ou=group,{{prometheus_ldap_base}}"
+    prometheus_ldap_admin_group: "cn=sysadmin,{{prometheus_ldap_groups_dn}}"
+# vim: set ft=sls ai et:

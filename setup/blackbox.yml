@@ -1,0 +1,3 @@
+---
+{{prometheus_blackbox_config|to_nice_yaml(indent=2)|indent(2)}}
+{{prometheus_blackbox_raw_config}}

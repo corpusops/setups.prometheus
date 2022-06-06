@@ -1,0 +1,56 @@
+version: "3.8"
+x-bases:
+  x-base: &base
+    env_file: [../.env, .env, .env.local]
+    environment: &env
+      BASE_IMAGE: "${BASE_IMAGE:-corpusops/ubuntu-bare:20.04}"
+      NGINX_REAL_IP_FROM: "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ${PROMETHEUSSCRIPTS_NETWORK:-172.38.0}.0/12"
+networks:
+  prometheus:
+    driver: bridge
+    name: "${PROMETHEUS_NETWORK_NAME:-prometheus}"
+    ipam: {driver: default, config: [{subnet: "${PROMETHEUS_NETWORK}.0/24"}]}
+services:
+  prometheusscripts:
+    <<: [ *base ]
+    depends_on: [setup-prometheusscripts]
+    image: "${DOCKER_IMAGE:-corpusops/prometheusscripts}"
+    environment:
+      <<: [ *env ]
+    volumes:
+    - "${DATA_FOLDER:-./data}:/w/data"
+    - helpers:/helpers:rw
+    networks: {prometheus: {ipv4_address: "${PROMETHEUSSCRIPTS_NETWORK:-172.38.0}.67"}}
+    entrypoint:
+    - bash
+    - -ec
+    - |-
+      export PATH=/helpers:$$PATH
+      dockerize -wait http://setup-prometheusscripts -timeout 60s
+      exec docker-entrypoint.sh $$0 $$@
+  setup-prometheusscripts:
+    <<: [ *base ]
+    image: "${BASE_IMAGE:-corpusops/ubuntu-bare:20.04}"
+    entrypoint:
+    - bash
+    - -ec
+    - |-
+      cp -arvf /cops_helpers/* /helpers
+      export PATH=/cops_helpers:/$$PATH
+      hf=/started_hr
+      HELPERS_TIMEOUT=$${HELPERS_TIMEOUT:-45s}
+      rf() { for fl in $$hf;do if [ -f $$fl ] ;then rm -f $$fl;fi;done; }
+      echo "Try helpers availability" >&2
+      ( set +ex;while true;do /helpers/frep --version && touch $$hf&&break;sleep 1;echo retryh;done; )&
+      rf
+      set -x
+      dockerize -timeout 900s -wait "file:///$$hf"
+      set +x
+      rf
+      while true;do printf "HTTP/1.1 200 OK\nContent-Length: 7\n\nstarted\n"|( nc -l -p 80 || /bin/true);done
+    networks: {prometheus: {ipv4_address: "${PROMETHEUSSCRIPTS_NETWORK:-172.38.0}.66"}}
+    volumes:
+    - helpers:/helpers:rw
+volumes:
+  helpers: {}
+  db:

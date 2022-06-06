@@ -1,0 +1,7 @@
+version: "3.8"
+services:
+  prometheusscripts:
+    build:
+      context: "."
+      args:
+        PY_VER: 3.8

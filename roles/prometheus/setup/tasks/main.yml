@@ -1,0 +1,11 @@
+---
+- include_role: {name: corpusops.roles/services_virt_docker}
+  tags: [docker_setup]
+- include_role: {name: prometheus/service_stop}
+  tags: [service, prometheus_service, prometheus_service_stop]
+- include_role: {name: prometheus/configure}
+  tags: [configs, prometheus_configure]
+- include_role: {name: prometheus/service_start}
+  tags: [service, prometheus_service, prometheus_service_start]
+- include_role: {name: prometheus/post}
+  tags: [post]

@@ -1,0 +1,5 @@
+---
+- include_role: {name: prometheus/layout}
+  tags: [prometheus_layout]
+- include_role: {name: prometheus/configs}
+  tags: [prometheus_configs]
