@@ -49,7 +49,7 @@ setup(
     classifiers=classifiers,
     keywords="",
     author="kiorky",
-    author_email="kiorky@cryptelium.net",
+    author_email="freesoftware@makina-corpus.com",
     url="https://github.com/corpusops/prometheusscripts",
     long_description_content_type='text/markdown',
     license="GPL",
